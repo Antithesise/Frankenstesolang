@@ -9,19 +9,21 @@ class Namespace: # used only to differentiate between strings and namespaces whe
 
 
 class interpret:
-    def clean_expr(self, expr: list) -> Any:
+    def clean_expr(self, expr: list) -> Any: # clean an expression returned by parse_expr
         return "".join([repr(t) if type(t) != Namespace else t.name for t in expr[0]])
 
-    def evaluate(self, expr: str) -> bool:
+    def evaluate(self, expr: str) -> bool: # bool evaluation of an expression
         return bool(eval(self.clean_expr(self.parse_expr(expr))))
 
-    def parse_string(self, expr: str, quotetype: str) -> Tuple(str, int):
+    def parse_string(self, expr: str, quotetype: str) -> Tuple(str, int): # parse a string
         val = ""
 
         skip = False
 
         for i, c in enumerate(expr):
             if skip:
+                skip = False
+
                 continue
             elif c == "\\":
                 val += expr[i + 1]
@@ -34,7 +36,7 @@ class interpret:
         
         return val, i + 1
 
-    def parse_expr(self, expr: str, btype: None | str=None) -> Any:
+    def parse_expr(self, expr: str, btype: None | str=None) -> Any: # recursively parse an expression
         tokens = split(r"\b", expr[btype is not None:])
 
         value = []
@@ -77,7 +79,7 @@ class interpret:
 
         return value, index
 
-    def __init__(self, code: str) -> None:
+    def __init__(self, code: str) -> None: # parse code and extract function definitions
         self.code: list[str] = [
             l.split("#")[0].strip() for l in code.split("\n") if l.split("#")[0].strip()
         ] # convert code into a list of lines with trailing whitespace and comments removed
@@ -110,7 +112,7 @@ class interpret:
                         args = arguments.split()
                         
                     multiline = True
-                elif operator == "=" and namespace not in (self.vars | self.funcs):
+                elif operator == "=" and namespace not in (self.vars | self.funcs): # store initial value of a variable for dynamic type checking ?
                     self.vars[namespace] = eval(self.clean_expr(self.parse_expr("".join(arguments))))
             else:
                 self.code.pop(i)
@@ -122,7 +124,7 @@ class interpret:
 
                     multiline = False # exit func def mode
 
-    def __call__(self) -> None:
+    def __call__(self) -> None: # run code 
         multiline = False
         skip = 0
     
