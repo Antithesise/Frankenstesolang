@@ -4,11 +4,17 @@ from re import split
 
 
 @dataclass
-class Namespace: # used only to differentiate between strings and namespaces when tokenised
+class Namespace: # used only to differentiate between strings and namespaces when tokenised and to let punctuation be tokenised
     name: str
 
 
 class interpret:
+    def clean_expr(self, expr: list) -> Any:
+        return "".join([repr(t) if type(t) != Namespace else t.name for t in expr[0]])
+
+    def evaluate(self, expr: str) -> bool:
+        return bool(eval(self.clean_expr(self.parse_expr(expr))))
+
     def parse_string(self, expr: str, quotetype: str) -> Tuple(str, int):
         val = ""
 
@@ -39,18 +45,18 @@ class interpret:
                 skip -= 1
 
                 continue
-            elif not token:
-                continue
+            elif not token.strip():
+                value.append(Namespace(token))
 
             if token[0] in "([{":
-                val, skip = " ".join([repr(t) if type(t) != Namespace else t.name for t in self.parse_expr("".join(expr[index:]), btype=token[0])])
+                val, skip = self.clean_expr(self.parse_expr("".join(expr[index:]), btype=token[0]))
 
                 if token == "(":
-                    val = eval("(%s)" % val)
+                    val = eval("(%s)" % val, globals=(self.vars | self.funcs))
                 elif token == "[":
-                    val = eval("[%s]" % val)
+                    val = eval("[%s]" % val, globals=(self.vars | self.funcs))
                 elif token == "{":
-                    val = eval("{%s}" % val)
+                    val = eval("{%s}" % val, globals=(self.vars | self.funcs))
                 
                 value.append(val)
             elif token in ")]}":
@@ -62,7 +68,9 @@ class interpret:
             elif token in "\"'":
                 val, skip = self.parse_string("".join(tokens[index:]), token)
                 value.append(val)
-            elif token in self.vars.keys():
+            elif token == ",":
+                value.append(Namespace(token))
+            elif token in self.vars:
                 value.append(Namespace(token))
             else:
                 raise SyntaxError
@@ -77,43 +85,46 @@ class interpret:
         self.funcs: dict = {}
         self.vars: dict = {}
 
-        multiline = False
+        multiline = False # parsing a definition
     
-        for i, l in enumerate(self.code):
+        for i, l in enumerate(self.code): # index, line
             line: list[str] = l.split() # split line at whitespace
 
             namespace = line[0] # get the first 'word' of the line
             operator = line[1] # same with the second
 
             try:
-                arguments: list[str] = line[2:].rstrip("$") # and then the rest
+                arguments: list[str] = line[2:-(line[-1] == "$")] # and then the rest (removing the '$' at the end if there is one)
             except IndexError:
-                pass
+                pass # line has weird syntax, eg 'None $' at end of func def
 
             if not multiline:
-                if l[-1] == "$": # define func
-                    name = namespace
-                    args: list[str] = []
-                    body: list[str] = []
+                if l[-1] == "$" and operator == "&": # func def
+                    self.code.pop(i)
+
+                    name = namespace # func name
+                    args: list[str] = [] # func args
+                    body: list[str] = [] # func body
                     
                     if operator == "&":
                         args = arguments.split()
                         
                     multiline = True
                 elif operator == "=" and namespace not in (self.vars | self.funcs):
-                    self.vars[namespace] = [a.strip() for a in arguments.split(",")]
+                    self.vars[namespace] = eval(self.clean_expr(self.parse_expr("".join(arguments))))
             else:
                 self.code.pop(i)
 
                 if l[-1] != "$":
                     body.append(l)
                 else:
-                    self.funcs[name] = (args, body, namespace, )
+                    self.funcs[name] = (args, body, namespace, ) # namespace in this line is what to return
 
-                    multiline = False
+                    multiline = False # exit func def mode
 
     def __call__(self) -> None:
         multiline = False
+        skip = 0
     
         for l in self.code:
             # [namespace] [operation] [object]
@@ -124,9 +135,14 @@ class interpret:
             # [body]
             # [what to return] $
 
-            # [namespace] $
+            # [namespace] & $
             # [body]
             # [what to return] $
+
+            if skip:
+                skip -= 1
+
+                continue
 
             line: list[str] = l.split() # split line at whitespace
 
@@ -134,21 +150,15 @@ class interpret:
             operation = line[1] # same with the second
 
             try:
-                arguments: list[str] = line[2:].rstrip("$") # and then the rest
+                arguments: list[str] = line[2:-(line[-1] == "$")] # and then the rest (removing the '$' at the end if there is one)
             except IndexError:
-                pass
+                pass # line has weird syntax, eg 'None $' at end of func def
 
             if not multiline:
-                if l[-1] == "$": # define func
-                    name = namespace
-                    args: list[str] = []
-                    body: list[str] = []
-                    
-                    if operation == "&":
-                        args = arguments.split()
-                        
-                    multiline = True
-                elif operation == "IMPORT": # import something from another file
+                if l[-1] == "$": # logic / flow control
+                    multiline == True
+
+                if operation == "IMPORT": # import something from another file
                     pass
                 elif operation == ".": # call func
                     pass
@@ -156,8 +166,11 @@ class interpret:
                     pass
             else:
                 if l[-1] != "$":
-                    body.append(l)
+                    if operation == "IMPORT": # import something from another file
+                        pass
+                    elif operation == ".": # call func
+                        pass
+                    else: # operate on var / func
+                        pass
                 else:
-                    self.funcs[name] = (args, body, namespace, )
-
                     multiline = False
